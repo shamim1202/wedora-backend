@@ -20,6 +20,23 @@ const client = new MongoClient(uri, {
 async function run() {
   try {
     await client.connect();
+
+    const db = client.db("wedoraDB");
+    const usersCollection = db.collection("users");
+    const servicesCollection = db.collection("services");
+
+    //===>====>=====>====>===> 
+    //===>====>=====>====>===> Added New User In The Database 
+    app.post("/users", async (req, res) => {
+      const user = req.body;
+      const exists = await usersCollection.findOne({ email: user.email });
+      if (exists) {
+        return res.send({ message: "User already exists" });
+      }
+      const result = await usersCollection.insertOne(user);
+      res.send(result);
+    });
+
     await client.db("admin").command({ ping: 1 });
     console.log(
       "Pinged your deployment. You successfully connected to MongoDB!"
