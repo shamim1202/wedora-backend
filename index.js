@@ -70,8 +70,22 @@ async function run() {
     //===>====>=====> Store Booking Service In The Database Api
     app.post("/bookings", async (req, res) => {
       const booking = req.body;
+      const { serviceId, date } = booking;
+
+      const exists = await bookingsCollection.findOne({ serviceId, date });
+      if (exists) {
+        return res.send({
+          success: false,
+          message:
+            "You already booked this service for same date. Please pick another date",
+        });
+      }
       const result = await bookingsCollection.insertOne(booking);
-      res.send(result);
+      res.send({
+        success: true,
+        message: "Booking confirmed successfully!",
+        data: result,
+      });
     });
 
     //===>====>=====>====> Get Booking Service From The Database Api
@@ -80,6 +94,20 @@ async function run() {
       const cursor = bookingsCollection.find(query);
       const result = await cursor.toArray();
       res.send(result);
+    });
+
+    //===>====>=====>====> Get Booking Date From The Database Api
+    app.get("/booked-dates/:serviceId", async (req, res) => {
+      const serviceId = res.params.serviceId;
+      const bookings = await bookingsCollection
+        .find({
+          serviceId,
+        })
+        .project({ date: 1 })
+        .toArray();
+
+      const dates = bookings.map((b) => b.date);
+      res.send(dates);
     });
 
     await client.db("admin").command({ ping: 1 });
