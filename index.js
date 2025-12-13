@@ -57,13 +57,10 @@ async function run() {
     });
 
     //===>====>=====>====>===> Added New User In The Database
-    app.post("/users", async (req, res) => {
+    app.post("/user", async (req, res) => {
       const user = req.body;
-      const exists = await usersCollection.findOne({ email: user.email });
-      if (exists) {
-        return res.send({ message: "User already exists" });
-      }
       const result = await usersCollection.insertOne(user);
+      console.log(result)
       res.send(result);
     });
 
