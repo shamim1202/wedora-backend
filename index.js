@@ -1,14 +1,33 @@
 const express = require("express");
 const cors = require("cors");
+const admin = require("firebase-admin");
 require("dotenv").config();
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const app = express();
 const port = process.env.PORT || 3000;
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.qx9mzcm.mongodb.net/?appName=Cluster0`;
+const decoder = Buffer.from(process.env.FB_SERVICE_KEY, "base64").toString(
+  "utf-8"
+);
+
+// Firebase Admin Initialization ------------------------------>
+const serviceAccount = JSON.parse(decoder);
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
 
 // Middleware ------------------------------------------------>
 app.use(express.json());
-app.use(cors());
+app.use(
+  cors({
+    origin: [
+      "http://localhost:5173",
+      "https://wedora-event-management.web.app",
+    ],
+    credentials: true,
+    optionsSuccessStatus: 200,
+  })
+);
 
 const client = new MongoClient(uri, {
   serverApi: {
@@ -26,10 +45,17 @@ async function run() {
     const servicesCollection = db.collection("services");
     const bookingsCollection = db.collection("bookings");
 
+
+    //===>====>=====>====> Store Services in The Database Api
+    app.post("/add-service", async (req, res) => {
+      const service = req.body;
+      const result = await servicesCollection.insertOne(service);
+      res.send(result);
+    });
+
     //===>====>=====>====>===> Get All Services Api
     app.get("/services", async (req, res) => {
-      const cursor = servicesCollection.find();
-      const result = await cursor.toArray();
+      const result = await servicesCollection.find().toArray
       res.send(result);
     });
 
@@ -60,7 +86,7 @@ async function run() {
     app.post("/user", async (req, res) => {
       const user = req.body;
       const result = await usersCollection.insertOne(user);
-      console.log(result)
+      console.log(result);
       res.send(result);
     });
 
