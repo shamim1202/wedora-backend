@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const admin = require("firebase-admin");
 require("dotenv").config();
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const app = express();
 const port = process.env.PORT || 3000;
@@ -128,6 +129,14 @@ async function run() {
       }
     });
 
+    app.get("/bookings/:bookingsId", async (req, res) => {
+      const id = req.params.bookingsId;
+      const query = { _id: new ObjectId(id) };
+      const result = await bookingsCollection.findOne(query);
+      res.send(result);
+    });
+
+    // ===>====>=====>====> Delete Booking Service From The Database Api
     app.delete("/bookings/:id", async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
@@ -147,6 +156,31 @@ async function run() {
 
       const dates = bookings.map((b) => b.date);
       res.send(dates);
+    });
+
+    // ===>====>=====>====> Stripe Payment Intent Api
+    app.post("/create-checkout-session", async (req, res) => {
+      const paymentInfo = req.body;
+      console.log(paymentInfo);
+      const amount = paymentInfo.cost * 100;
+      const session = await stripe.checkout.sessions.create({
+        line_items: [
+          {
+            price_data: {
+              currency: "bdt",
+              unit_amount: amount,
+              product_data: { name: paymentInfo.serviceName },
+            },
+            quantity: 1,
+          },
+        ],
+        customer_email: paymentInfo.email,
+        mode: "payment",
+        success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success`,
+        cancel_url: `${process.env.SITE_DOMAIN}/dashboard/payment-cancelled`,
+      });
+      console.log(session);
+      res.send({ url: session.url });
     });
 
     await client.db("admin").command({ ping: 1 });
