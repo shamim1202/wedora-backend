@@ -45,7 +45,6 @@ async function run() {
     const servicesCollection = db.collection("services");
     const bookingsCollection = db.collection("bookings");
 
-
     //===>====>=====>====> Store Services in The Database Api
     app.post("/add-service", async (req, res) => {
       const service = req.body;
@@ -55,7 +54,7 @@ async function run() {
 
     //===>====>=====>====>===> Get All Services Api
     app.get("/services", async (req, res) => {
-      const result = await servicesCollection.find().toArray
+      const result = await servicesCollection.find().toArray();
       res.send(result);
     });
 
@@ -93,6 +92,7 @@ async function run() {
     //===>====>=====> Store Booking Service In The Database Api
     app.post("/bookings", async (req, res) => {
       const booking = req.body;
+      const createdAt = new Date();
       const { serviceId, date } = booking;
 
       const exists = await bookingsCollection.findOne({ serviceId, date });
@@ -113,15 +113,31 @@ async function run() {
 
     //===>====>=====>====> Get Booking Service From The Database Api
     app.get("/bookings", async (req, res) => {
-      const query = {};
-      const cursor = bookingsCollection.find(query);
-      const result = await cursor.toArray();
+      try {
+        const { email } = req.query;
+        const query = {};
+        if (email) {
+          query.userEmail = email;
+        }
+        const options = { sort: { createdAt: -1 } };
+        const result = await bookingsCollection.find(query, options).toArray();
+        res.send(result);
+      } catch (error) {
+        console.error("Error fetching bookings:", error);
+        res.status(500).send({ error: "Failed to fetch bookings" });
+      }
+    });
+
+    app.delete("/bookings/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await bookingsCollection.deleteOne(query);
       res.send(result);
     });
 
     //===>====>=====>====> Get Booking Date From The Database Api
     app.get("/booked-dates/:serviceId", async (req, res) => {
-      const serviceId = res.params.serviceId;
+      const serviceId = req.params.serviceId;
       const bookings = await bookingsCollection
         .find({
           serviceId,
