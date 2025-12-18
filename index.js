@@ -1,6 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 const admin = require("firebase-admin");
+const crypto = require("crypto");
 require("dotenv").config();
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
@@ -10,6 +11,13 @@ const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster
 const decoder = Buffer.from(process.env.FB_SERVICE_KEY, "base64").toString(
   "utf-8"
 );
+
+function generateTrackingId() {
+  const prefix = "WEDORA";
+  const date = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  const randomString = crypto.randomBytes(3).toString("hex").toUpperCase();
+  return `${prefix}-${date}-${randomString}`;
+}
 
 // Firebase Admin Initialization ------------------------------>
 const serviceAccount = JSON.parse(decoder);
@@ -45,6 +53,7 @@ async function run() {
     const usersCollection = db.collection("users");
     const servicesCollection = db.collection("services");
     const bookingsCollection = db.collection("bookings");
+    const paymentsCollection = db.collection("payments");
 
     //===>====>=====>====> Store Services in The Database Api
     app.post("/add-service", async (req, res) => {
@@ -129,6 +138,7 @@ async function run() {
       }
     });
 
+    // ===>====>=====>====> Id Wise booking related Api
     app.get("/bookings/:bookingsId", async (req, res) => {
       const id = req.params.bookingsId;
       const query = { _id: new ObjectId(id) };
@@ -178,7 +188,10 @@ async function run() {
         ],
         customer_email: paymentInfo.userEmail,
         mode: "payment",
-        metadata: { bookingId: paymentInfo.bookingId },
+        metadata: {
+          bookingId: paymentInfo.bookingId,
+          serviceName: paymentInfo.serviceName,
+        },
         success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success?success=true&session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${process.env.SITE_DOMAIN}/dashboard/payment-cancelled`,
       });
@@ -186,25 +199,75 @@ async function run() {
       res.send({ url: session.url, sessionId: session.id });
     });
 
+    // ===>====>=====>====> Stripe Payment Success Related Api
     app.patch("/payment-success", async (req, res) => {
       const sessionId = req.query.session_id;
       const session = await stripe.checkout.sessions.retrieve(sessionId);
-      if (session.payment_status === "paid") {
-        {
-          const bookingId = session.metadata.bookingId;
-          const query = { _id: new ObjectId(bookingId) };
-          const update = {
-            $set: {
-              paymentStatus: "Paid",
-              transactionId: session.payment_intent,
-              paymentTime: session.created,
-            },
-          };
-          const result = await bookingsCollection.updateOne(query, update);
-          res.send(result);
-        }
+      if (session.payment_status !== "paid") {
+        return res.send({
+          success: false,
+          message: "Payment not completed",
+        });
       }
+
+      const transactionId = session.payment_intent;
+      const existingPayment = await paymentsCollection.findOne({
+        transactionId: transactionId,
+      });
+      if (existingPayment) {
+        return res.send({
+          success: true,
+          transactionId,
+          trackingId: existingPayment.trackingId,
+          message: "Payment already processed",
+        });
+      }
+
+      const trackingId = generateTrackingId();
+      const bookingId = session.metadata.bookingId;
+      const query = { _id: new ObjectId(bookingId) };
+      const update = {
+        $set: {
+          paymentStatus: "Paid",
+          trackingId: trackingId,
+        },
+      };
+
+      const result = await bookingsCollection.updateOne(query, update);
+      const payment = {
+        amount: session.amount_total / 100,
+        transactionId: session.payment_intent,
+        trackingId: trackingId,
+        currency: session.currency,
+        customerEmail: session.customer_email,
+        serviceName: session.metadata.serviceName,
+        paymentStatus: session.payment_status,
+        bookingId: bookingId,
+        paidAt: new Date(),
+      };
+
+      const paymentResult = await paymentsCollection.insertOne(payment);
+      console.log("Payment record inserted:", paymentResult);
+      res.send({
+        success: true,
+        modifyBooking: result,
+        trackingId: trackingId,
+        transactionId: session.payment_intent,
+        paymentInfo: paymentResult,
+      });
     });
+
+    // ===>====>=====>====> Service Payment History Related Api
+    app.get("/payments", async (req, res) => {
+      const email = req.query.email;
+      const query = {};
+      if (email) {
+        query.customerEmail = email;
+      }
+      const cursor = paymentsCollection.find(query);
+      const result = await cursor.toArray();
+      res.send(result);
+    })
 
     await client.db("admin").command({ ping: 1 });
     console.log(
