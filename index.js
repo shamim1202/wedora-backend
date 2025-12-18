@@ -162,25 +162,48 @@ async function run() {
     app.post("/create-checkout-session", async (req, res) => {
       const paymentInfo = req.body;
       console.log(paymentInfo);
-      const amount = paymentInfo.cost * 100;
+      const amount = parseInt(paymentInfo.cost) * 100;
       const session = await stripe.checkout.sessions.create({
         line_items: [
           {
             price_data: {
               currency: "bdt",
               unit_amount: amount,
-              product_data: { name: paymentInfo.serviceName },
+              product_data: {
+                name: `Please pay for- ${paymentInfo.serviceName}`,
+              },
             },
             quantity: 1,
           },
         ],
-        customer_email: paymentInfo.email,
+        customer_email: paymentInfo.userEmail,
         mode: "payment",
-        success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success`,
+        metadata: { bookingId: paymentInfo.bookingId },
+        success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success?success=true&session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${process.env.SITE_DOMAIN}/dashboard/payment-cancelled`,
       });
       console.log(session);
-      res.send({ url: session.url });
+      res.send({ url: session.url, sessionId: session.id });
+    });
+
+    app.patch("/payment-success", async (req, res) => {
+      const sessionId = req.query.session_id;
+      const session = await stripe.checkout.sessions.retrieve(sessionId);
+      if (session.payment_status === "paid") {
+        {
+          const bookingId = session.metadata.bookingId;
+          const query = { _id: new ObjectId(bookingId) };
+          const update = {
+            $set: {
+              paymentStatus: "Paid",
+              transactionId: session.payment_intent,
+              paymentTime: session.created,
+            },
+          };
+          const result = await bookingsCollection.updateOne(query, update);
+          res.send(result);
+        }
+      }
     });
 
     await client.db("admin").command({ ping: 1 });
