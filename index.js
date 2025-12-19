@@ -68,6 +68,7 @@ async function run() {
     const servicesCollection = db.collection("services");
     const bookingsCollection = db.collection("bookings");
     const paymentsCollection = db.collection("payments");
+    const decoretorsCollection = db.collection("decoretors");
 
     //===>====>=====>====> Store Services in The Database Api
     app.post("/add-service", async (req, res) => {
@@ -106,14 +107,64 @@ async function run() {
     });
 
     //===>====>=====>====>===> Added New User In The Database
-    app.post("/user", async (req, res) => {
+    app.post("/users", async (req, res) => {
       const user = req.body;
+      user.role = "user";
+      user.createdAt = new Date().toISOString();
+      user.lastLoggedAt = new Date().toISOString();
+
+      const query = { email: user.email };
+      const existingUser = await usersCollection.findOne(query);
+
+      if (existingUser) {
+        const result = await usersCollection.updateOne(query, {
+          $set: { lastLoggedAt: new Date().toISOString() },
+        });
+        console.log(result);
+        return res.send(result);
+      }
+
       const result = await usersCollection.insertOne(user);
       console.log(result);
       res.send(result);
     });
 
+    // app.post("/users", async (req, res) => {
+    //   try {
+    //     const user = req.body;
+    //     const query = { email: user.email };
+    //     const updateDoc = {
+    //       $set: {
+    //         uid: user.uid,
+    //         displayName: user.displayName,
+    //         email: user.email,
+    //         image: user.image,
+    //         role: "user",
+    //         updatedAt: new Date(),
+    //       },
+    //       $setOnInsert: {
+    //         createdAt: new Date(),
+    //       },
+    //     };
+
+    //     const options = { upsert: true };
+    //     const result = await usersCollection.updateOne(
+    //       query,
+    //       updateDoc,
+    //       options
+    //     );
+
+    //     res.send(result);
+    //   } catch (error) {
+    //     res.status(500).send({
+    //       message: "User save failed",
+    //       error: error.message,
+    //     });
+    //   }
+    // });
+
     //===>====>=====> Store Booking Service In The Database Api
+
     app.post("/bookings", async (req, res) => {
       const booking = req.body;
       const createdAt = new Date();
@@ -284,6 +335,19 @@ async function run() {
       const cursor = paymentsCollection.find(query);
       const result = await cursor.toArray();
       res.send(result);
+    });
+
+    // Decoretor Related Api Here --------------------------------->
+    app.get("/decoretors", async (req, res) => {
+      const result = await usersCollection.find();
+      res.send(result);
+    });
+
+    // Users Role Update Api Here --------------------------------->
+    app.get("/user/role/:email", async (req, res) => {
+      const email = req.params.email;
+      const result = await usersCollection.findOne({ email });
+      res.send({ role: result?.role });
     });
 
     await client.db("admin").command({ ping: 1 });
