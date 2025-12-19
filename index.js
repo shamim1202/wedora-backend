@@ -38,6 +38,20 @@ app.use(
   })
 );
 
+const verifyFBToken = async (req, res, next) => {
+  const token = req.headers?.authorization?.split(" ")[1];
+  if (!token) {
+    return res.status(401).send({ message: "Unauthorized access" });
+  }
+  try {
+    const decodedToken = await admin.auth().verifyIdToken(token);
+    req.decoded_email = decodedToken.email;
+  } catch (error) {
+    return res.status(401).send({ message: "Unauthorized access" });
+  }
+  next();
+};
+
 const client = new MongoClient(uri, {
   serverApi: {
     version: ServerApiVersion.v1,
@@ -258,16 +272,19 @@ async function run() {
     });
 
     // ===>====>=====>====> Service Payment History Related Api
-    app.get("/payments", async (req, res) => {
+    app.get("/payments", verifyFBToken, async (req, res) => {
       const email = req.query.email;
       const query = {};
       if (email) {
         query.customerEmail = email;
+        if (email !== req.decoded_email) {
+          return res.status(403).send({ message: "Forbidden access" });
+        }
       }
       const cursor = paymentsCollection.find(query);
       const result = await cursor.toArray();
       res.send(result);
-    })
+    });
 
     await client.db("admin").command({ ping: 1 });
     console.log(
