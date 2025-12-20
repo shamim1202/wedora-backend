@@ -68,7 +68,7 @@ async function run() {
     const servicesCollection = db.collection("services");
     const bookingsCollection = db.collection("bookings");
     const paymentsCollection = db.collection("payments");
-    const decoretorsCollection = db.collection("decoretors");
+    const decReqCollection = db.collection("reqDecoretors");
 
     //===>====>=====>====> Store Services in The Database Api
     app.post("/add-service", async (req, res) => {
@@ -167,7 +167,7 @@ async function run() {
 
     app.post("/bookings", async (req, res) => {
       const booking = req.body;
-      const createdAt = new Date();
+      booking.createdAt = new Date();
       const { serviceId, date } = booking;
 
       const exists = await bookingsCollection.findOne({ serviceId, date });
@@ -187,7 +187,7 @@ async function run() {
     });
 
     //===>====>=====>====> Get Booking Service From The Database Api
-    app.get("/bookings", async (req, res) => {
+    app.get("/bookings", verifyFBToken, async (req, res) => {
       try {
         const { email } = req.query;
         const query = {};
@@ -337,17 +337,39 @@ async function run() {
       res.send(result);
     });
 
-    // Decoretor Related Api Here --------------------------------->
+    // ===>====>=====>====> Decoretor Related Api Here
     app.get("/decoretors", async (req, res) => {
       const result = await usersCollection.find();
       res.send(result);
     });
 
-    // Users Role Update Api Here --------------------------------->
-    app.get("/user/role/:email", async (req, res) => {
+    // ===>====>=====>====> Users Role Update Api Here
+    app.get("/user/role/:email", verifyFBToken, async (req, res) => {
       const email = req.params.email;
       const result = await usersCollection.findOne({ email });
       res.send({ role: result?.role });
+    });
+
+    // ===>====>=====>====> Make a user to a decorator Api here
+    app.post("/become-decorator", verifyFBToken, async (req, res) => {
+      const request = req.body;
+      const email = req.decoded_email;
+      console.log(email);
+      const isApplied = await decReqCollection.findOne({ email });
+      if (isApplied) {
+        return res.status(409).json({
+          success: false,
+          message: "You already applied. Please wait for admin response.",
+        });
+      }
+      request.status = "pending";
+      request.applyAt = new Date().toISOString();
+
+      await decReqCollection.insertOne(request);
+      res.status(201).json({
+        success: true,
+        message: "Request for Be a Decorator submitted successfully",
+      });
     });
 
     await client.db("admin").command({ ping: 1 });
