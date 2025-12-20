@@ -350,7 +350,7 @@ async function run() {
       res.send({ role: result?.role });
     });
 
-    // ===>====>=====>====> Make a user to a decorator Api here
+    // ===>====>=====>====> Become a decorator request Post Api here
     app.post("/become-decorator", verifyFBToken, async (req, res) => {
       const request = req.body;
       const email = req.decoded_email;
@@ -370,6 +370,12 @@ async function run() {
         success: true,
         message: "Request for Be a Decorator submitted successfully",
       });
+    });
+
+    // ===>====>=====>====> Make a user to a decorator Api here
+    app.get("/decorator-request", verifyFBToken, async (req, res) => {
+      const result = await decReqCollection.find().toArray();
+      res.send(result);
     });
 
     await client.db("admin").command({ ping: 1 });
