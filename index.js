@@ -70,8 +70,23 @@ async function run() {
     const paymentsCollection = db.collection("payments");
     const decReqCollection = db.collection("reqDecoretors");
 
+    //===>====>=====>====> Verify admin related api
+    const verifyAdmin = async (req, res, next) => {
+      const email = req.decoded_email;
+      const query = { email };
+      const user = await usersCollection.findOne({ query });
+
+      if (!user || user.role !== "admin") {
+        return res.status(403).send({
+          message: "Forbidden Access",
+        });
+      }
+
+      next();
+    };
+
     //===>====>=====>====> Store Services in The Database Api
-    app.post("/add-service", async (req, res) => {
+    app.post("/add-service", verifyFBToken, verifyAdmin, async (req, res) => {
       const service = req.body;
       const result = await servicesCollection.insertOne(service);
       res.send(result);
@@ -265,61 +280,126 @@ async function run() {
     });
 
     // ===>====>=====>====> Stripe Payment Success Related Api
+    // app.patch("/payment-success", async (req, res) => {
+    //   const sessionId = req.query.session_id;
+    //   const session = await stripe.checkout.sessions.retrieve(sessionId);
+    //   if (session.payment_status !== "paid") {
+    //     return res.send({
+    //       success: false,
+    //       message: "Payment not completed",
+    //     });
+    //   }
+
+    //   const transactionId = session.payment_intent;
+    //   const existingPayment = await paymentsCollection.findOne({
+    //     transactionId: transactionId,
+    //   });
+    //   if (existingPayment) {
+    //     return res.send({
+    //       success: true,
+    //       transactionId,
+    //       trackingId: existingPayment.trackingId,
+    //       message: "Payment already processed",
+    //     });
+    //   }
+
+    //   const trackingId = generateTrackingId();
+    //   const bookingId = session.metadata.bookingId;
+    //   const query = { _id: new ObjectId(bookingId) };
+    //   const update = {
+    //     $set: {
+    //       paymentStatus: "Paid",
+    //       trackingId: trackingId,
+    //     },
+    //   };
+
+    //   const result = await bookingsCollection.updateOne(query, update);
+    //   const payment = {
+    //     amount: session.amount_total / 100,
+    //     transactionId: session.payment_intent,
+    //     trackingId: trackingId,
+    //     currency: session.currency,
+    //     customerEmail: session.customer_email,
+    //     serviceName: session.metadata.serviceName,
+    //     paymentStatus: session.payment_status,
+    //     bookingId: bookingId,
+    //     paidAt: new Date(),
+    //   };
+
+    //   const paymentResult = await paymentsCollection.insertOne(payment);
+    //   console.log("Payment record inserted:", paymentResult);
+    //   res.send({
+    //     success: true,
+    //     modifyBooking: result,
+    //     trackingId: trackingId,
+    //     transactionId: session.payment_intent,
+    //     paymentInfo: paymentResult,
+    //   });
+    // });
+
     app.patch("/payment-success", async (req, res) => {
-      const sessionId = req.query.session_id;
-      const session = await stripe.checkout.sessions.retrieve(sessionId);
-      if (session.payment_status !== "paid") {
-        return res.send({
-          success: false,
-          message: "Payment not completed",
-        });
-      }
+      try {
+        const sessionId = req.query.session_id;
+        if (!sessionId) {
+          return res.status(400).send({
+            success: false,
+            message: "Session ID missing",
+          });
+        }
+        const session = await stripe.checkout.sessions.retrieve(sessionId);
+        if (session.payment_status !== "paid") {
+          return res.send({
+            success: false,
+            message: "Payment not completed",
+          });
+        }
+        const transactionId = session.payment_intent;
+        const bookingId = session.metadata.bookingId;
+        const trackingId = generateTrackingId();
+        const result = await bookingsCollection.updateOne(
+          { _id: new ObjectId(bookingId) },
+          {
+            $set: {
+              paymentStatus: "Paid",
+              trackingId: trackingId,
+            },
+          }
+        );
+        const paymentResult = await paymentsCollection.updateOne(
+          { transactionId: transactionId }, // 🔥 filter
+          {
+            $setOnInsert: {
+              amount: session.amount_total / 100,
+              transactionId: transactionId,
+              trackingId: trackingId,
+              currency: session.currency,
+              customerEmail: session.customer_email,
+              serviceName: session.metadata.serviceName,
+              paymentStatus: session.payment_status,
+              bookingId: bookingId,
+              paidAt: new Date(),
+            },
+          },
+          { upsert: true }
+        );
 
-      const transactionId = session.payment_intent;
-      const existingPayment = await paymentsCollection.findOne({
-        transactionId: transactionId,
-      });
-      if (existingPayment) {
-        return res.send({
+        res.send({
           success: true,
-          transactionId,
-          trackingId: existingPayment.trackingId,
-          message: "Payment already processed",
+          modifyBooking: result,
+          trackingId: trackingId,
+          transactionId: transactionId,
+          message:
+            paymentResult.upsertedCount === 1
+              ? "Payment processed successfully"
+              : "Payment already exists",
+        });
+      } catch (error) {
+        console.error("Payment success error:", error);
+        res.status(500).send({
+          success: false,
+          message: "Internal server error",
         });
       }
-
-      const trackingId = generateTrackingId();
-      const bookingId = session.metadata.bookingId;
-      const query = { _id: new ObjectId(bookingId) };
-      const update = {
-        $set: {
-          paymentStatus: "Paid",
-          trackingId: trackingId,
-        },
-      };
-
-      const result = await bookingsCollection.updateOne(query, update);
-      const payment = {
-        amount: session.amount_total / 100,
-        transactionId: session.payment_intent,
-        trackingId: trackingId,
-        currency: session.currency,
-        customerEmail: session.customer_email,
-        serviceName: session.metadata.serviceName,
-        paymentStatus: session.payment_status,
-        bookingId: bookingId,
-        paidAt: new Date(),
-      };
-
-      const paymentResult = await paymentsCollection.insertOne(payment);
-      console.log("Payment record inserted:", paymentResult);
-      res.send({
-        success: true,
-        modifyBooking: result,
-        trackingId: trackingId,
-        transactionId: session.payment_intent,
-        paymentInfo: paymentResult,
-      });
     });
 
     // ===>====>=====>====> Service Payment History Related Api
@@ -373,13 +453,18 @@ async function run() {
     });
 
     // ===>====>=====>====> Make a user to a decorator Api here
-    app.get("/decorator-request", verifyFBToken, async (req, res) => {
-      const result = await decReqCollection.find().toArray();
-      res.send(result);
-    });
+    app.get(
+      "/decorator-request",
+      verifyFBToken,
+      verifyAdmin,
+      async (req, res) => {
+        const result = await decReqCollection.find().toArray();
+        res.send(result);
+      }
+    );
 
     // ===>====>=====>====> Accept become a decorator request Api here
-    app.patch("/update-role", verifyFBToken, async (req, res) => {
+    app.patch("/update-role", verifyFBToken, verifyAdmin, async (req, res) => {
       const { email, role } = req.body;
       const result = await usersCollection.updateOne(
         { email },
@@ -398,10 +483,11 @@ async function run() {
       });
     });
 
-    // ===>====>=====>====> Cancel become a decorator request Api here
+    // ===>====>=====>====> Cancel become a decorator request By admin Api here
     app.delete(
       "/cancel-decorator-request/:id",
       verifyFBToken,
+      verifyAdmin,
       async (req, res) => {
         try {
           const id = req.params.id;
@@ -423,12 +509,17 @@ async function run() {
     );
 
     // ===>====>=====>====> Admin manage users api here
-    app.get("/admin/manage-users", async (req, res) => {
-      const result = await usersCollection
-        .find({ role: { $ne: "admin" } })
-        .toArray();
-      res.send(result);
-    });
+    app.get(
+      "/admin/manage-users",
+      verifyFBToken,
+      verifyAdmin,
+      async (req, res) => {
+        const result = await usersCollection
+          .find({ role: { $ne: "admin" } })
+          .toArray();
+        res.send(result);
+      }
+    );
 
     // ===>====>=====>====> Admin manage users delete user api here
     app.delete("/users/:id", verifyFBToken, async (req, res) => {
@@ -455,20 +546,6 @@ async function run() {
         });
       }
     });
-
-    // ===>====>=====>====> Accept become a decorator request Api here
-    // app.patch("/admin/manage-users", verifyFBToken, async (req, res) => {
-    //   const { email, role } = req.body;
-    //   const result = await usersCollection.updateOne(
-    //     { email },
-    //     { $set: { role } }
-    //   );
-    //   res.send({
-    //     success: true,
-    //     message: "User role updated Successfully",
-    //     result,
-    //   });
-    // });
 
     await client.db("admin").command({ ping: 1 });
     console.log(
