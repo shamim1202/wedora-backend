@@ -378,6 +378,21 @@ async function run() {
       res.send(result);
     });
 
+    // ===>====>=====>====> Update a user to a decorator Api here
+    app.patch("/update-role", verifyFBToken, async (req, res) => {
+      const { email, role } = req.body;
+      const result = await usersCollection.updateOne(
+        { email },
+        { $set: { role } }
+      );
+      await decReqCollection.deleteOne({ email });
+      res.send({
+        success: true,
+        message: "User role updated and request removed",
+        result,
+      });
+    });
+
     await client.db("admin").command({ ping: 1 });
     console.log(
       "Pinged your deployment. You successfully connected to MongoDB!"
