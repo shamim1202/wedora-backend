@@ -378,13 +378,18 @@ async function run() {
       res.send(result);
     });
 
-    // ===>====>=====>====> Update a user to a decorator Api here
+    // ===>====>=====>====> Accept become a decorator request Api here
     app.patch("/update-role", verifyFBToken, async (req, res) => {
       const { email, role } = req.body;
       const result = await usersCollection.updateOne(
         { email },
         { $set: { role } }
       );
+      if (result.matchedCount === 0) {
+        return res
+          .status(404)
+          .send({ success: false, message: "User not found" });
+      }
       await decReqCollection.deleteOne({ email });
       res.send({
         success: true,
@@ -392,6 +397,78 @@ async function run() {
         result,
       });
     });
+
+    // ===>====>=====>====> Cancel become a decorator request Api here
+    app.delete(
+      "/cancel-decorator-request/:id",
+      verifyFBToken,
+      async (req, res) => {
+        try {
+          const id = req.params.id;
+          const result = await decReqCollection.deleteOne({
+            _id: new ObjectId(id),
+          });
+          res.send({
+            success: true,
+            message: "Decorator request cancelled",
+            result,
+          });
+        } catch (error) {
+          res.status(500).send({
+            success: false,
+            message: "Internal Server Error",
+          });
+        }
+      }
+    );
+
+    // ===>====>=====>====> Admin manage users api here
+    app.get("/admin/manage-users", async (req, res) => {
+      const result = await usersCollection
+        .find({ role: { $ne: "admin" } })
+        .toArray();
+      res.send(result);
+    });
+
+    // ===>====>=====>====> Admin manage users delete user api here
+    app.delete("/users/:id", verifyFBToken, async (req, res) => {
+      try {
+        const id = req.params.id;
+        const result = await usersCollection.deleteOne({
+          _id: new ObjectId(id),
+        });
+        if (result.deletedCount === 0) {
+          return res.status(404).send({
+            success: false,
+            message: "User not found",
+          });
+        }
+        res.send({
+          success: true,
+          message: "User deleted successfully",
+          result,
+        });
+      } catch (error) {
+        res.status(500).send({
+          success: false,
+          message: "Internal Server Error",
+        });
+      }
+    });
+
+    // ===>====>=====>====> Accept become a decorator request Api here
+    // app.patch("/admin/manage-users", verifyFBToken, async (req, res) => {
+    //   const { email, role } = req.body;
+    //   const result = await usersCollection.updateOne(
+    //     { email },
+    //     { $set: { role } }
+    //   );
+    //   res.send({
+    //     success: true,
+    //     message: "User role updated Successfully",
+    //     result,
+    //   });
+    // });
 
     await client.db("admin").command({ ping: 1 });
     console.log(
