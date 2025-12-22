@@ -29,10 +29,7 @@ admin.initializeApp({
 app.use(express.json());
 app.use(
   cors({
-    origin: [
-      "http://localhost:5173",
-      "https://wedora-event-management.web.app",
-    ],
+    origin: ["https://wedora-frontend.vercel.app", "http://localhost:5173"],
     credentials: true,
     optionsSuccessStatus: 200,
   })
@@ -61,8 +58,6 @@ const client = new MongoClient(uri, {
 });
 async function run() {
   try {
-    await client.connect();
-
     const db = client.db("wedoraDB");
     const usersCollection = db.collection("users");
     const servicesCollection = db.collection("services");
@@ -73,15 +68,13 @@ async function run() {
     //===>====>=====>====> Verify admin related api
     const verifyAdmin = async (req, res, next) => {
       const email = req.decoded_email;
-      const query = { email };
-      const user = await usersCollection.findOne({ query });
+      const user = await usersCollection.findOne({ email });
 
       if (!user || user.role !== "admin") {
         return res.status(403).send({
           message: "Forbidden Access",
         });
       }
-
       next();
     };
 
@@ -280,63 +273,6 @@ async function run() {
     });
 
     // ===>====>=====>====> Stripe Payment Success Related Api
-    // app.patch("/payment-success", async (req, res) => {
-    //   const sessionId = req.query.session_id;
-    //   const session = await stripe.checkout.sessions.retrieve(sessionId);
-    //   if (session.payment_status !== "paid") {
-    //     return res.send({
-    //       success: false,
-    //       message: "Payment not completed",
-    //     });
-    //   }
-
-    //   const transactionId = session.payment_intent;
-    //   const existingPayment = await paymentsCollection.findOne({
-    //     transactionId: transactionId,
-    //   });
-    //   if (existingPayment) {
-    //     return res.send({
-    //       success: true,
-    //       transactionId,
-    //       trackingId: existingPayment.trackingId,
-    //       message: "Payment already processed",
-    //     });
-    //   }
-
-    //   const trackingId = generateTrackingId();
-    //   const bookingId = session.metadata.bookingId;
-    //   const query = { _id: new ObjectId(bookingId) };
-    //   const update = {
-    //     $set: {
-    //       paymentStatus: "Paid",
-    //       trackingId: trackingId,
-    //     },
-    //   };
-
-    //   const result = await bookingsCollection.updateOne(query, update);
-    //   const payment = {
-    //     amount: session.amount_total / 100,
-    //     transactionId: session.payment_intent,
-    //     trackingId: trackingId,
-    //     currency: session.currency,
-    //     customerEmail: session.customer_email,
-    //     serviceName: session.metadata.serviceName,
-    //     paymentStatus: session.payment_status,
-    //     bookingId: bookingId,
-    //     paidAt: new Date(),
-    //   };
-
-    //   const paymentResult = await paymentsCollection.insertOne(payment);
-    //   console.log("Payment record inserted:", paymentResult);
-    //   res.send({
-    //     success: true,
-    //     modifyBooking: result,
-    //     trackingId: trackingId,
-    //     transactionId: session.payment_intent,
-    //     paymentInfo: paymentResult,
-    //   });
-    // });
-
     app.patch("/payment-success", async (req, res) => {
       try {
         const sessionId = req.query.session_id;
@@ -560,5 +496,5 @@ app.get("/", (req, res) => {
   res.send("Hello, WEDORA - Event Management Team");
 });
 app.listen(port, () => {
-  console.log(`WEDORA - Event Management Server Is Running On Port :`, port);
+  console.log("port", port);
 });
