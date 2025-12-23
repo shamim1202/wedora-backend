@@ -29,7 +29,7 @@ admin.initializeApp({
 app.use(express.json());
 app.use(
   cors({
-    origin: ["https://wedora-frontend.vercel.app", "http://localhost:5173"],
+    origin: ["https://wedora-frontend.vercel.app", "http://localhost:5173/"],
     credentials: true,
     optionsSuccessStatus: 200,
   })
@@ -60,6 +60,7 @@ async function run() {
   try {
     const db = client.db("wedoraDB");
     const usersCollection = db.collection("users");
+    const decoratorsCollection = db.collection("decorators");
     const servicesCollection = db.collection("services");
     const bookingsCollection = db.collection("bookings");
     const paymentsCollection = db.collection("payments");
@@ -137,42 +138,7 @@ async function run() {
       res.send(result);
     });
 
-    // app.post("/users", async (req, res) => {
-    //   try {
-    //     const user = req.body;
-    //     const query = { email: user.email };
-    //     const updateDoc = {
-    //       $set: {
-    //         uid: user.uid,
-    //         displayName: user.displayName,
-    //         email: user.email,
-    //         image: user.image,
-    //         role: "user",
-    //         updatedAt: new Date(),
-    //       },
-    //       $setOnInsert: {
-    //         createdAt: new Date(),
-    //       },
-    //     };
-
-    //     const options = { upsert: true };
-    //     const result = await usersCollection.updateOne(
-    //       query,
-    //       updateDoc,
-    //       options
-    //     );
-
-    //     res.send(result);
-    //   } catch (error) {
-    //     res.status(500).send({
-    //       message: "User save failed",
-    //       error: error.message,
-    //     });
-    //   }
-    // });
-
     //===>====>=====> Store Booking Service In The Database Api
-
     app.post("/bookings", async (req, res) => {
       const booking = req.body;
       booking.createdAt = new Date();
@@ -387,6 +353,30 @@ async function run() {
         message: "Request for Be a Decorator submitted successfully",
       });
     });
+    // app.post("/become-decorator", verifyFBToken, async (req, res) => {
+    //   const email = req.decoded_email;
+    //   const user = await usersCollection.findOne({ email });
+    //   if (user.role !== "user") {
+    //     return res.status(400).send({
+    //       message: "Only users can apply for decorator",
+    //     });
+    //   }
+    //   const exists = await decReqCollection.findOne({ email });
+    //   if (exists) {
+    //     return res.status(409).send({
+    //       message: "Already applied",
+    //     });
+    //   }
+    //   await decReqCollection.insertOne({
+    //     email,
+    //     status: "pending",
+    //     createdAt: new Date(),
+    //   });
+    //   res.send({
+    //     success: true,
+    //     message: "Decorator request submitted",
+    //   });
+    // });
 
     // ===>====>=====>====> Make a user to a decorator Api here
     app.get(
@@ -398,6 +388,21 @@ async function run() {
         res.send(result);
       }
     );
+
+    // ===>====>=====>====> Get top-decorators Api here
+    app.get("/top-decorators", async (req, res) => {
+      try {
+        const topDecorators = await usersCollection
+          .find({ role: "decorator" })
+          .toArray();
+        res.send(topDecorators);
+      } catch (error) {
+        console.error("Error fetching top decorators:", error);
+        res
+          .status(500)
+          .send({ success: false, message: "Internal Server Error" });
+      }
+    });
 
     // ===>====>=====>====> Accept become a decorator request Api here
     app.patch("/update-role", verifyFBToken, verifyAdmin, async (req, res) => {
@@ -419,7 +424,98 @@ async function run() {
       });
     });
 
+    // app.patch("/update-role", verifyFBToken, verifyAdmin, async (req, res) => {
+    //   const { email, role } = req.body;
+    //   const session = client.startSession();
+    //   try {
+    //     session.startTransaction();
+    //     const user = await usersCollection.findOne({ email }, { session });
+    //     if (!user)
+    //       return res
+    //         .status(404)
+    //         .send({ success: false, message: "User not found" });
+    //     if (role === "decorator") {
+    //       const newDecorator = {
+    //         email: user.email,
+    //         name: user.displayName || user.name,
+    //         role: "decorator",
+    //         image: user.image || user.photoURL,
+    //         phone: user.phone || "",
+    //         experience: user.experience || "Not Available",
+    //         skills: user.skills || "Not Available",
+    //         portfolio: user.portfolio || "Not Available",
+    //         createdAt: new Date(),
+    //         updatedAt: new Date(),
+    //       };
+    //       await decoratorsCollection.insertOne(newDecorator, { session });
+    //       await usersCollection.deleteOne({ email }, { session });
+    //     }
+    //     if (role === "user") {
+    //       const newUser = {
+    //         email: user.email,
+    //         name: user.displayName || user.name,
+    //         role: "user",
+    //         createdAt: new Date(),
+    //         updatedAt: new Date(),
+    //       };
+    //       await usersCollection.insertOne(newUser, { session });
+    //       await decoratorsCollection.deleteOne({ email }, { session });
+    //     }
+    //     await decReqCollection.deleteOne({ email }, { session }); // remove pending request
+    //     await session.commitTransaction();
+    //     res.send({ success: true, message: `Role updated to ${role}` });
+    //   } catch (error) {
+    //     await session.abortTransaction();
+    //     console.error(error);
+    //     res.status(500).send({ success: false, message: "Role update failed" });
+    //   } finally {
+    //     session.endSession();
+    //   }
+    // });
+
+    // app.patch("/update-role", verifyFBToken, verifyAdmin, async (req, res) => {
+    //   const { email, role, decoratorProfile } = req.body;
+    //   try {
+    //     const updateDoc = {
+    //       role,
+    //       updatedAt: new Date(),
+    //     };
+    //     if (role === "decorator") {
+    //       updateDoc.decoratorProfile = {
+    //         phone: decoratorProfile?.phone || "",
+    //         experience: decoratorProfile?.experience || "Not Available",
+    //         skills: decoratorProfile?.skills || "Not Available",
+    //         portfolio: decoratorProfile?.portfolio || "Not Available",
+    //       };
+    //     } else {
+    //       updateDoc.$unset = { decoratorProfile: "" };
+    //     }
+    //     const result = await usersCollection.updateOne(
+    //       { email },
+    //       { $set: updateDoc }
+    //     );
+    //     if (result.matchedCount === 0) {
+    //       return res
+    //         .status(404)
+    //         .send({ success: false, message: "User not found" });
+    //     }
+    //     // pending request থাকলে remove
+    //     await decReqCollection.deleteOne({ email });
+    //     res.send({
+    //       success: true,
+    //       message: `User role updated to ${role}`,
+    //     });
+    //   } catch (error) {
+    //     console.error(error);
+    //     res.status(500).send({
+    //       success: false,
+    //       message: "Role update failed",
+    //     });
+    //   }
+    // });
+
     // ===>====>=====>====> Cancel become a decorator request By admin Api here
+    
     app.delete(
       "/cancel-decorator-request/:id",
       verifyFBToken,
